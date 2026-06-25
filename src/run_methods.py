@@ -35,7 +35,8 @@ from scip_common import read_instance, instance_dims  # noqa: E402
 from validate_benders import build_mono_fixed          # noqa: E402
 
 PARTIAL_FRACTION = 0.25   # benders_partial retains ceil(m/4) blocks in master
-SOLVE_METHODS = ["mono", "benders_full", "benders_partial", "benders_2rand"]
+ADAP_SP_FRAC     = 0.5    # benders_adap_sp solves 50% of subproblems per round
+SOLVE_METHODS = ["mono", "benders_full", "benders_partial", "benders_2rand", "benders_adap_sp"]
 ALL_METHODS = ["GRB"] + SOLVE_METHODS
 
 FIELDS = ["instance", "length", "number", "it", "method", "status",
@@ -156,6 +157,12 @@ def solve_one(inst, method, time_limit=600, seed=2025):
                                         keep_in_master=keep,
                                         log_file=log_file)
         tcost = _true_cost(inst, r, time_limit)
+    elif method == "benders_adap_sp":
+        r = scip_benders.solve_instance(inst, time_limit=time_limit, seed=seed,
+                                        quiet=True, custom=True, keep_in_master=0,
+                                        subprobfrac=ADAP_SP_FRAC,
+                                        log_file=log_file)
+        tcost = _true_cost(inst, r, time_limit)
     else:
         raise ValueError(f"unknown method: {method}")
 
@@ -179,8 +186,19 @@ def run_instance(inst, time_limit=600, methods=ALL_METHODS, seed=2025):
             rows.append(solve_one(inst, method, time_limit=time_limit, seed=seed))
     os.makedirs(RESULTS, exist_ok=True)
     out = os.path.join(RESULTS, base.replace(".txt", ".csv"))
+
+    # Merge: keep any existing rows for methods we are NOT running now.
+    existing = {}
+    if os.path.exists(out):
+        with open(out) as f:
+            for row in csv.DictReader(f):
+                existing[row["method"]] = row
+    for r in rows:
+        existing[r["method"]] = r
+    merged = [existing[m] for m in ALL_METHODS if m in existing]
+
     with open(out, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS)
         w.writeheader()
-        w.writerows(rows)
+        w.writerows(merged)
     return rows, out

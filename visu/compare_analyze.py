@@ -39,11 +39,12 @@ ROOT = os.path.dirname(HERE)
 RESULTS = os.path.join(ROOT, "results")
 PLOTS = os.path.join(ROOT, "plots")
 
-METHOD_ORDER = ["GRB", "mono", "benders_full", "benders_partial", "benders_2rand"]
+METHOD_ORDER = ["GRB", "mono", "benders_full", "benders_partial", "benders_2rand", "benders_adap_sp"]
 LABELS = {"GRB": "Gurobi (mono)", "mono": "SCIP (mono)",
           "benders_full": "SCIP-Benders (full)",
           "benders_partial": "SCIP-Benders (partial m/4)",
-          "benders_2rand": "SCIP-Benders (2 rand)"}
+          "benders_2rand": "SCIP-Benders (2 rand)",
+          "benders_adap_sp": "SCIP-Benders (adap. SP)"}
 
 
 class Rec:

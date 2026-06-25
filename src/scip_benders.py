@@ -130,7 +130,7 @@ def build_sub(idx, word, n, p, q, link_vtype="C"):
 
 def solve_instance(path, time_limit=600, seed=2025, quiet=False, custom=False,
                    log_dir="logs", keep_in_master=None, log_label=None,
-                   log_file=None):
+                   log_file=None, subprobfrac=None):
     """Solve one instance with SCIP Benders.
 
     custom=False: default Benders (initBendersDefault). The framework's
@@ -181,6 +181,8 @@ def solve_instance(path, time_limit=600, seed=2025, quiet=False, custom=False,
         master.setBoolParam("constraints/benderslp/active", True)
         master.setBoolParam(f"benders/{bd.name}/updateauxvarbound", False)
         master.updateBendersLowerbounds({k: 0.0 for k in range(nsub)}, bd)
+        if subprobfrac is not None:
+            master.setRealParam(f"benders/{bd.name}/subprobfrac", subprobfrac)
     else:
         # The default Benders' CONSCHECK only verifies feasibility, not
         # auxiliary-variable optimality, so a heuristic can submit an (x, phi)
