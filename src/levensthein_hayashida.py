@@ -38,11 +38,14 @@ def readStrings(filepath):
 #num Instances
 I = 3
 
-with open(f"result_hayashida_binary_sum.txt", "a") as file:
+with open(f"result_hayashida_binary_sum.csv", "a") as file:
     file.write(f"Instance,Seed,BestIncumbent,BestBound,SolutionTime,GAP,Nodes,SimplexIterations,CenterString\n")
 
 for stringlength in [5, 10, 15, 20]:
     for stringnumber in [10, 20, 30, 40, 50]:
+        # skip if below 10_50
+        if stringlength == 5 or (stringlength == 10 and stringnumber < 50):
+            continue
         for it in range(I):
             for seed in [2025]:
                 n, m, sigma = None, None, None
@@ -129,7 +132,7 @@ for stringlength in [5, 10, 15, 20]:
                     median_string = ''.join(alphabet[int(t[j].X)] for j in range(1,max_len) if j < int(l.X)+1)
                 else:
                     median_string = ""
-                with open(f"result_hayashida_binary_sum.txt", "a") as file:
+                with open(f"result_hayashida_binary_sum.csv", "a") as file:
                     # Collect results
                     best_incumbent = model.ObjVal if model.SolCount > 0 else "NFS" #no feasible solution
                     best_bound = model.ObjBound if model.Status in [GRB.OPTIMAL, GRB.TIME_LIMIT] else "N/A"

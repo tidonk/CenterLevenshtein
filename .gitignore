@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.pyc
+
+# generated solver logs
+logs/*
+!logs/.gitkeep
+
+# generated result CSVs (keep the GRB reference baseline)
+results/*
+!results/.gitkeep
+!results/result_path_binary_2n.csv
+
+# generated tables / performance profiles
+plots/*
+!plots/.gitkeep

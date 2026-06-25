@@ -40,7 +40,7 @@ def generate_nodes(y):
 #num Instances
 I = 3
 #Set result file
-with open(f"result_path_binary_2n.txt", "a") as file:
+with open(f"result_path_binary_2n.csv", "a") as file:
     file.write(f"Instance,Seed,Best Incumbent,BestBound,SolutionTime,GAP,Nodes,SimplexIterations,Median\n")
 
 print("### STARTING PATH ###")
@@ -258,7 +258,7 @@ for stringlength in [5, 10, 15, 20]:
                 total_gap = model.MIPGap
                 total_nodes = model.NodeCount
                 total_simplexiters = model.IterCount
-                with open(f"result_path_binary_2n.txt", "a") as file:
+                with open(f"result_path_binary_2n.csv", "a") as file:
                     # Write results in a single row format
                     file.write(f"I_{stringlength}_{stringnumber}_{it}.txt,{seed},{total_best_incumbent},{total_best_bound},{total_solution_time},{total_gap},{total_nodes},{total_simplexiters},{total_center_string}\n")
             
