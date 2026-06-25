@@ -190,7 +190,8 @@ def perf_profile(data, instances, out_png):
         plt.step(taus, ys, where="post", label=LABELS[m], linewidth=2)
     plt.xlabel(r"$\tau$ (time / best time)")
     plt.ylabel(r"fraction of instances with ratio $\leq \tau$")
-    plt.title("Performance profile (solving time, solved instances)")
+    suffix = "" if "GRB" in methods else " - SCIP only (no Gurobi)"
+    plt.title("Performance profile (solving time, solved instances)" + suffix)
     plt.ylim(0, 1.02)
     plt.legend(loc="lower right")
     plt.grid(True, alpha=0.3)
@@ -219,16 +220,27 @@ def main():
 
     table, common = build_table(data, instances, args.tl)
     wilco = wilcoxon_block(data, instances, args.tl)
+
+    # Full profile (all methods), and always a SCIP-only profile (no GRB) since
+    # GRB is a different solver/machine and would otherwise set the baseline.
     perf_profile(data, instances, args.profile)
+    profiles = [os.path.relpath(args.profile, ROOT)]
+    data_nogrb = {m: d for m, d in data.items() if m != "GRB"}
+    if data_nogrb:
+        nomgrb_png = args.profile.replace(".png", "_noGRB.png")
+        perf_profile(data_nogrb, instances, nomgrb_png)
+        profiles.append(os.path.relpath(nomgrb_png, ROOT))
 
     report = (f"# SCIP/Gurobi comparison ({len(instances)} instances, TL={args.tl:.0f}s)\n\n"
               f"Methods: {', '.join(LABELS[m] for m in data)}\n\n"
               f"## Aggregates on solved instances\n\n{table}\n\n{wilco}\n\n"
-              f"Performance profile: {os.path.relpath(args.profile, ROOT)}\n")
+              f"Performance profiles:\n" + "".join(f"- {p}\n" for p in profiles))
     with open(args.out, "w") as f:
         f.write(report)
     print(report)
-    print(f"\nwrote {args.out}\nwrote {args.profile} (+ .pdf)")
+    print(f"\nwrote {args.out}")
+    for p in profiles:
+        print(f"wrote {p} (+ .pdf)")
 
 
 if __name__ == "__main__":
