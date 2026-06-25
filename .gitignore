@@ -14,3 +14,5 @@ results/*
 # generated tables / performance profiles
 plots/*
 !plots/.gitkeep
+
+cluster/condor*

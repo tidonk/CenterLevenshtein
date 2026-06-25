@@ -35,7 +35,7 @@ from scip_common import read_instance, instance_dims  # noqa: E402
 from validate_benders import build_mono_fixed          # noqa: E402
 
 PARTIAL_FRACTION = 0.25   # benders_partial retains ceil(m/4) blocks in master
-SOLVE_METHODS = ["mono", "benders_full", "benders_partial"]
+SOLVE_METHODS = ["mono", "benders_full", "benders_partial", "benders_2rand"]
 ALL_METHODS = ["GRB"] + SOLVE_METHODS
 
 FIELDS = ["instance", "length", "number", "it", "method", "status",
@@ -144,6 +144,16 @@ def solve_one(inst, method, time_limit=600, seed=2025):
         r = scip_benders.solve_instance(inst, time_limit=time_limit, seed=seed,
                                         quiet=True, custom=True,
                                         keep_in_master=PARTIAL_FRACTION,
+                                        log_file=log_file)
+        tcost = _true_cost(inst, r, time_limit)
+    elif method == "benders_2rand":
+        import random as _random
+        m_count, _ = read_instance(resolve_instance(inst))
+        rng = _random.Random(seed)
+        keep = set(rng.sample(range(m_count), min(2, m_count)))
+        r = scip_benders.solve_instance(inst, time_limit=time_limit, seed=seed,
+                                        quiet=True, custom=True,
+                                        keep_in_master=keep,
                                         log_file=log_file)
         tcost = _true_cost(inst, r, time_limit)
     else:

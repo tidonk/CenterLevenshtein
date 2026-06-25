@@ -39,10 +39,11 @@ ROOT = os.path.dirname(HERE)
 RESULTS = os.path.join(ROOT, "results")
 PLOTS = os.path.join(ROOT, "plots")
 
-METHOD_ORDER = ["GRB", "mono", "benders_full", "benders_partial"]
+METHOD_ORDER = ["GRB", "mono", "benders_full", "benders_partial", "benders_2rand"]
 LABELS = {"GRB": "Gurobi (mono)", "mono": "SCIP (mono)",
           "benders_full": "SCIP-Benders (full)",
-          "benders_partial": "SCIP-Benders (partial m/4)"}
+          "benders_partial": "SCIP-Benders (partial m/4)",
+          "benders_2rand": "SCIP-Benders (2 rand)"}
 
 
 class Rec:
@@ -135,8 +136,8 @@ def build_table(data, instances, tl):
 
 def wilcoxon_block(data, instances, tl):
     lines = ["", "## Wilcoxon signed-rank (all instances; dominance score)", "",
-             "Pairwise, two-sided. Lower score is better; a smaller median score",
-             "indicates the better method. n = non-tied instances.", "",
+             "One-sided: p-value tests whether the winner column is significantly",
+             "better than the other. Lower score is better. n = non-tied instances.", "",
              "| A | B | n | W | p-value | better |", "|---|---|---|---|---|---|"]
     methods = [m for m in METHOD_ORDER if m in data]
     for a_i in range(len(methods)):
@@ -149,12 +150,14 @@ def wilcoxon_block(data, instances, tl):
             if not nz:
                 lines.append(f"| {LABELS[A]} | {LABELS[B]} | 0 | - | - | tie |")
                 continue
-            try:
-                W, p = wilcoxon(sa, sb, zero_method="wilcox", alternative="two-sided")
-            except ValueError:
-                W, p = float("nan"), float("nan")
             med = sorted(nz)[len(nz) // 2]
             better = LABELS[A] if med < 0 else LABELS[B]
+            # one-sided: test H1 in the direction of the observed winner
+            alt = "less" if med < 0 else "greater"
+            try:
+                W, p = wilcoxon(sa, sb, zero_method="wilcox", alternative=alt)
+            except ValueError:
+                W, p = float("nan"), float("nan")
             lines.append(f"| {LABELS[A]} | {LABELS[B]} | {len(nz)} | "
                          f"{W:.1f} | {p:.4g} | {better} |")
     return "\n".join(lines)
