@@ -38,13 +38,14 @@ ROOT = os.path.dirname(HERE)
 RESULTS = os.path.join(ROOT, "results")
 PLOTS   = os.path.join(ROOT, "plots")
 
-METHOD_ORDER = ["GRB", "mono", "benders_full", "benders_partial", "benders_2rand"]
+METHOD_ORDER = ["GRB", "mono", "benders_full", "benders_partial", "benders_2rand", "benders_adap_sp"]
 MD_LABELS = {
     "GRB":              "Gurobi",
     "mono":             "SCIP (mono)",
     "benders_full":     "Benders (full)",
     "benders_partial":  "Benders (m/4)",
     "benders_2rand":    "Benders (2 rand)",
+    "benders_adap_sp":  "Benders (adap. SP)",
 }
 TEX_LABELS = {
     "GRB":              r"Gurobi",
@@ -52,6 +53,7 @@ TEX_LABELS = {
     "benders_full":     r"Benders (full)",
     "benders_partial":  r"Benders ($\nicefrac{m}{4}$)",
     "benders_2rand":    r"Benders (2 rand.)",
+    "benders_adap_sp":  r"Benders (adap.\ SP)",
 }
 TOL = 1e-6
 
@@ -124,6 +126,11 @@ def score(rec, tl):
     return tl + 1 + (rec.gap if rec.gap is not None else 1.0)
 
 
+def is_better(rec, ref_rec, tl):
+    """True if rec has a strictly lower dominance score than ref_rec."""
+    return score(rec, tl) < score(ref_rec, tl)
+
+
 def shifted_geomean(values, shift=10.0):
     if not values:
         return float("nan")
@@ -134,10 +141,17 @@ def shifted_geomean(values, shift=10.0):
 # Instance sorting key
 # ---------------------------------------------------------------------------
 def _sort_key(name):
-    m = re.match(r"I_(\d+)_(\d+)_(\d+)", name)
+    base = name.replace(".txt", "")
+    if base.startswith("rm_"):
+        parts = base.split("_")
+        return (0, int(parts[1]), 0, int(parts[2]))
+    if base.startswith("hamming_"):
+        parts = base.split("_")
+        return (1, int(parts[1]), 0, int(parts[2]))
+    m = re.match(r"I_(\d+)_(\d+)_(\d+)", base)
     if m:
-        return (int(m.group(1)), int(m.group(2)), int(m.group(3)))
-    return (0, 0, 0)
+        return (2, int(m.group(1)), int(m.group(2)), int(m.group(3)))
+    return (3, 0, 0, 0)
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +243,8 @@ def method_stats(data, instances, tl):
 # ---------------------------------------------------------------------------
 # Markdown table
 # ---------------------------------------------------------------------------
-def build_md(data, instances, stats, wilco, labels, methods, ref_label):
+def build_md(data, instances, stats, wilco, labels, methods, ref_label,
+             ref_method=None, tl=600.0):
     cols = ["**Instance**"] + [f"**{labels[m]}**" for m in methods]
     sep  = [":---"] + ["---:" for _ in methods]
 
@@ -239,9 +254,13 @@ def build_md(data, instances, stats, wilco, labels, methods, ref_label):
 
     for inst in instances:
         cells = [inst]
+        ref_rec = data.get(ref_method, {}).get(inst) if ref_method else None
         for m in methods:
             rec = data.get(m, {}).get(inst)
-            cells.append(fmt_cell(rec))
+            cell = fmt_cell(rec)
+            if m != ref_method and ref_rec is not None and is_better(rec, ref_rec, tl):
+                cell = f"**{cell}**"
+            cells.append(cell)
         rows.append(" | ".join(cells))
 
     def sr(label, values):
@@ -275,7 +294,8 @@ def _tex_esc(s):
     return s.replace("_", r"\_").replace("%", r"\%").replace("&", r"\&")
 
 
-def build_tex(data, instances, stats, wilco, labels, methods, ref_label, label_suffix=""):
+def build_tex(data, instances, stats, wilco, labels, methods, ref_label,
+              label_suffix="", ref_method=None, tl=600.0):
     colspec = "l" + "r" * len(methods)
 
     lines = []
@@ -293,10 +313,14 @@ def build_tex(data, instances, stats, wilco, labels, methods, ref_label, label_s
     lines.append(r"\midrule")
 
     for inst in instances:
+        ref_rec = data.get(ref_method, {}).get(inst) if ref_method else None
         cells = [_tex_esc(inst)]
         for m in methods:
             rec = data.get(m, {}).get(inst)
-            cells.append(fmt_cell_tex(rec))
+            cell = fmt_cell_tex(rec)
+            if m != ref_method and ref_rec is not None and is_better(rec, ref_rec, tl):
+                cell = r"\textbf{" + cell + "}"
+            cells.append(cell)
         lines.append(" & ".join(cells) + r" \\")
 
     lines.append(r"\midrule")
@@ -332,7 +356,7 @@ def build_tex(data, instances, stats, wilco, labels, methods, ref_label, label_s
 # ---------------------------------------------------------------------------
 # Helpers to build one variant
 # ---------------------------------------------------------------------------
-SCIP_METHODS = ["mono", "benders_full", "benders_partial", "benders_2rand"]
+SCIP_METHODS = ["mono", "benders_full", "benders_partial", "benders_2rand", "benders_adap_sp"]
 
 
 def make_variant(data, all_insts, stats, tl, methods, ref, label_suffix=""):
@@ -340,9 +364,10 @@ def make_variant(data, all_insts, stats, tl, methods, ref, label_suffix=""):
     wilco = wilcoxon_vs_ref(data, all_insts, tl, ref)
     ref_label_md  = MD_LABELS.get(ref, ref)
     ref_label_tex = TEX_LABELS.get(ref, ref)
-    md  = build_md( data, all_insts, stats, wilco, MD_LABELS,  methods, ref_label_md)
+    md  = build_md( data, all_insts, stats, wilco, MD_LABELS,  methods, ref_label_md,
+                    ref_method=ref, tl=tl)
     tex = build_tex(data, all_insts, stats, wilco, TEX_LABELS, methods, ref_label_tex,
-                    label_suffix=label_suffix)
+                    label_suffix=label_suffix, ref_method=ref, tl=tl)
     return md, tex
 
 
