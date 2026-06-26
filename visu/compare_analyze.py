@@ -29,6 +29,7 @@ import os
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import ConnectionPatch
 from scipy.stats import wilcoxon
 
 import glob
@@ -164,16 +165,25 @@ def wilcoxon_block(data, instances, tl):
     return "\n".join(lines)
 
 
-def perf_profile(data, instances, out_png):
-    """Dolan-More performance profile on solving time (solved instances)."""
+def perf_profile(data, instances, tl, out_png):
+    """Combined Dolan-Moré time profile (left) + gap CDF (right), publication-ready.
+
+    A dashed vertical line marks the scale break. The gap axis starts at 0 %
+    there (instances solved within TL have gap = 0) and increases rightward.
+    Lines are uninterrupted across the break via ConnectionPatch connectors.
+    """
     methods = [m for m in METHOD_ORDER if m in data]
-    # best time per instance among methods that solved it
+    n = len(instances)
+
+    # --- LEFT: Dolan-Moré time-ratio profile ---
     ratios = {m: [] for m in methods}
     max_ratio = 1.0
     for i in instances:
-        best = min((data[m][i].time for m in methods
-                    if data[m].get(i) and data[m][i].solved and data[m][i].time is not None),
-                   default=None)
+        best = min(
+            (data[m][i].time for m in methods
+             if data[m].get(i) and data[m][i].solved and data[m][i].time is not None),
+            default=None,
+        )
         if best is None or best <= 0:
             best = None
         for m in methods:
@@ -185,24 +195,115 @@ def perf_profile(data, instances, out_png):
             else:
                 ratios[m].append(float("inf"))
 
-    n = len(instances)
-    taus = [1.0 + k * (max_ratio - 1.0) / 200 for k in range(201)] if max_ratio > 1 else [1.0]
-    taus = sorted(set(taus + [max_ratio * 1.05]))
-    plt.figure(figsize=(7, 5))
-    for m in methods:
-        ys = [sum(1 for r in ratios[m] if r <= t) / n for t in taus]
-        plt.step(taus, ys, where="post", label=LABELS[m], linewidth=2)
-    plt.xlabel(r"$\tau$ (time / best time)")
-    plt.ylabel(r"fraction of instances with ratio $\leq \tau$")
-    suffix = "" if "GRB" in methods else " - SCIP only (no Gurobi)"
-    plt.title("Performance profile (solving time, solved instances)" + suffix)
-    plt.ylim(0, 1.02)
-    plt.legend(loc="lower right")
-    plt.grid(True, alpha=0.3)
-    plt.tight_layout()
-    plt.savefig(out_png, dpi=130)
-    plt.savefig(out_png.replace(".png", ".pdf"))
-    plt.close()
+    taus = sorted({1.0 + k * (max_ratio - 1.0) / 500 for k in range(501)} | {max_ratio})
+
+    # --- RIGHT: gap CDF at time limit ---
+    final_gaps = {m: [] for m in methods}
+    max_gap_pct = 0.0
+    for i in instances:
+        for m in methods:
+            rec = data[m].get(i)
+            if rec and rec.solved:
+                final_gaps[m].append(0.0)
+            elif rec and rec.has_primal and rec.gap is not None and math.isfinite(rec.gap):
+                g = rec.gap * 100.0
+                final_gaps[m].append(g)
+                max_gap_pct = max(max_gap_pct, g)
+            else:
+                final_gaps[m].append(float("inf"))
+
+    max_gap_pct = min(max(max_gap_pct * 1.05, 1.0), 100.0)
+    gap_xs = sorted({g * max_gap_pct / 500 for g in range(501)} | {max_gap_pct})
+
+    # Per-method style: (color, linestyle, linewidth)
+    # GRB = Wong blue; mono = black; four Benders = grey shades + distinct dashes
+    STYLES = {
+        "GRB":             ("#0072B2", "solid",   1.8),
+        "mono":            ("#000000", "solid",   1.8),
+        "benders_full":    ("#444444", "solid",   1.5),
+        "benders_partial": ("#666666", "dashed",  1.5),
+        "benders_2rand":   ("#888888", "dashdot", 1.5),
+        "benders_adap_sp": ("#AAAAAA", "dotted",  1.5),
+    }
+    PUB_LABELS = {
+        "GRB":             r"Gurobi",
+        "mono":            r"SCIP compact",
+        "benders_full":    r"SCIP-Benders (full)",
+        "benders_partial": r"SCIP-Benders (partial, $\lceil m/4\rceil$)",
+        "benders_2rand":   r"SCIP-Benders (2\,rand)",
+        "benders_adap_sp": r"SCIP-Benders (adap.\ SP)",
+    }
+
+    rc = {
+        "text.usetex":     True,
+        "font.family":     "serif",
+        "axes.labelsize":  11,
+        "font.size":       10,
+        "legend.fontsize": 9,
+        "xtick.labelsize": 9,
+        "ytick.labelsize": 9,
+    }
+    with plt.rc_context(rc):
+        fig, (ax1, ax2) = plt.subplots(
+            1, 2, sharey=True, figsize=(8, 4.2),
+            gridspec_kw={"width_ratios": [1, 1], "wspace": 0},
+        )
+        handles = []
+
+        for m in methods:
+            c, ls, lw = STYLES.get(m, ("#999999", "solid", 1.5))
+            label = PUB_LABELS.get(m, m)
+
+            # Left panel — time profile
+            ys_t = [sum(1 for r in ratios[m] if r <= t) / n for t in taus]
+            (ln,) = ax1.step(taus, ys_t, where="post",
+                             color=c, ls=ls, lw=lw, label=label, zorder=2)
+            handles.append(ln)
+
+            # Right panel — gap CDF
+            ys_g = [sum(1 for g in final_gaps[m] if g <= gx) / n for gx in gap_xs]
+            ax2.step(gap_xs, ys_g, where="post",
+                     color=c, ls=ls, lw=lw, zorder=2)
+
+            # Connector so lines are visually uninterrupted at the panel boundary
+            y_bound = sum(1 for r in ratios[m] if math.isfinite(r)) / n
+            fig.add_artist(ConnectionPatch(
+                xyA=(max_ratio, y_bound), coordsA="data", axesA=ax1,
+                xyB=(0.0,       y_bound), coordsB="data", axesB=ax2,
+                color=c, ls=ls, lw=lw, zorder=2, clip_on=False,
+            ))
+
+        # Dashed separator drawn behind data lines (zorder 1 < data zorder 2)
+        ax2.axvline(0.0, color="black", ls="--", lw=1.2, zorder=1, clip_on=False)
+
+        ax1.set_xlabel(r"$\tau$ (time\,/\,best time)")
+        ax1.set_ylabel(r"fraction of instances")
+        ax2.set_xlabel(r"optimality gap at time limit (\%)")
+
+        ax1.set_ylim(0, 1.02)
+        ax1.set_xlim(1.0, max_ratio)    # step extends naturally to exact xlim right
+        ax2.set_xlim(0.0, max_gap_pct)  # step starts at exact xlim left
+
+        ax1.grid(True, alpha=0.25, zorder=0)
+        ax2.grid(True, alpha=0.25, zorder=0)
+
+        ax1.spines["right"].set_visible(False)
+        ax2.spines["left"].set_visible(False)
+        ax2.tick_params(left=False)
+
+        ax1.legend(handles=handles,
+                   labels=[PUB_LABELS.get(m, m) for m in methods],
+                   loc="upper left", fontsize=9, framealpha=0.95, edgecolor="0.75")
+
+        ax2.text(1.0, 0.0, rf"$n = {n}$",
+                 transform=ax2.transAxes,
+                 ha="right", va="bottom", fontsize=9,
+                 color="0.4")
+
+        plt.tight_layout()
+        for ext in (".png", ".pdf"):
+            plt.savefig(out_png.replace(".png", ext), dpi=300, bbox_inches="tight")
+        plt.close()
 
 
 def main():
@@ -227,12 +328,12 @@ def main():
 
     # Full profile (all methods), and always a SCIP-only profile (no GRB) since
     # GRB is a different solver/machine and would otherwise set the baseline.
-    perf_profile(data, instances, args.profile)
+    perf_profile(data, instances, args.tl, args.profile)
     profiles = [os.path.relpath(args.profile, ROOT)]
     data_nogrb = {m: d for m, d in data.items() if m != "GRB"}
     if data_nogrb:
         nomgrb_png = args.profile.replace(".png", "_noGRB.png")
-        perf_profile(data_nogrb, instances, nomgrb_png)
+        perf_profile(data_nogrb, instances, args.tl, nomgrb_png)
         profiles.append(os.path.relpath(nomgrb_png, ROOT))
 
     report = (f"# SCIP/Gurobi comparison ({len(instances)} instances, TL={args.tl:.0f}s)\n\n"
